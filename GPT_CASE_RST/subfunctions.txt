@@ -1,0 +1,6 @@
+% Here you may add any functions of your own, that you want to call from
+% the interaction function, but never need to call from outside it.
+% Whichever section they are called from, they must respect the same
+% restrictions on what modifications they are allowed to make to the mesh.
+% This comment can be deleted.
+

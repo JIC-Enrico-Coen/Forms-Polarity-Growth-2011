@@ -1,0 +1,22 @@
+    % In this section you may modify the mesh in any way whatsoever.
+    if Steps(m)==0 % First iteration
+        initial_thickness=0.05;
+        m=setAbsoluteThickness(m,initial_thickness);
+        % add the range fields
+        % 1 NOPOL  is no polariser no cenorg
+        % 6 POL3    clamp source and sink, polariser first and second phase, no cenorg, left-right different kper
+        % 5 POLCEN2 clamp source and sink, polariser first and second phase, second phase cenorg, left-right different kper
+        m.userdata.ranges.modelname.range{1}='NOPOL'; % no polariser
+        m.userdata.ranges.modelname.range{2}='POL3' ; % polariser but no changes of -organiser
+        m.userdata.ranges.modelname.range{3}='POLCEN2'; % polariser with change of -organiser
+        % -------------------- CHANGE THIS INDEX ------------------
+        % to select submodel number 1 2 or 3
+        m.userdata.ranges.modelname.index=3; % selects just one of these modulation function options,
+        
+        m.morphogens=zeros(size(m.morphogens));
+        m.seams=logical(zeros(size(m.seams)));
+        m.polfreeze=zeros(size(m.polfreeze));
+        m.mgen_production=zeros(size(m.mgen_production));
+    end
+    m = leaf_mgen_plotpriority( m, {'id_distorg','id_proxorg'}, [10], [0.19 0.5 ] );
+    modelname=m.userdata.ranges.modelname.range{m.userdata.ranges.modelname.index};

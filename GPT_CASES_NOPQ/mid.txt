@@ -1,0 +1,111 @@
+
+% In this section you may modify the mesh in any way that does not
+% alter the set of nodes.
+
+    % Constants set up to create Figures
+    EXTRAGROWTH = 0.75; % 0 or 0.75
+    GROWTHRADIUS = 0.2;
+    MAXPOLRADIUS = 0.5; %0.5;
+    BACKGROUNDGROWTH = 0.25;
+    POLRADIUS = 0.15; %0.15;
+
+    if (Steps(m)==0) && m.globalDynamicProps.doinit  % Initialisation code.
+        % Put any code here that should only be performed at the start of
+        % the simulation, for example, to set up initial morphogen values.
+        
+        % Create and fix a morphogen that increases according to 3D radius
+        % squared (c.f. Hill coefficient of 2)
+        f_radial_p=(m.nodes(:,1).^2+m.nodes(:,2).^2+m.nodes(:,3).^2); % morphogen is visible in GUI
+        % Uncomment the following to see the slight change of shape if only
+        % 2D radius is used (bear in mind that the initial canvas is curved)
+        %f_radial_p=(m.nodes(:,1).^2+m.nodes(:,2).^2; % morphogen is visible in GUI
+
+        id_plus_org_p(m.nodes(:,1)==min(m.nodes(:,1)))=1; % left margin
+        id_plus_org_l=id_plus_org_p*id_plus_org_a;
+        id_neg_org_p (m.nodes(:,1)==max(m.nodes(:,1)))=1; % distal (top)
+        id_neg_org_l=id_neg_org_p*id_neg_org_a;
+        
+        % Fixing vertices, i.e. fix z for the base to prevent base from moving up or down
+        % (rather like embedding the canvas in a much larger canvas)
+        f_border_p=zeros(size(id_plus_org_p)); % temporary factor
+        f_border_p((abs(m.nodes(:,1))>0.9) | ...
+            (abs(m.nodes(:,2))>0.9))=1;
+        m=leaf_fix_vertex(m,'vertex',find(f_border_p==1),'dfs','z');
+        
+        m = leaf_mgen_conductivity( m, 'POLARISER', 0.1 );  % no diffusion
+        m = leaf_mgen_absorption( m, 'POLARISER', 0.0  );   % no degradation
+        % Set up the ...
+        % @@PRN Polariser Regulatory Network
+        % Pattern and fix gradients and gene patterns into tissue (canvas) before growth
+        P = m.nodes(:,1) - min( m.nodes(:,1) );
+        P = P/max(P); % normalise initial gradient to [0...1]
+        m.morphogenclamp( :, polariser_i ) = 0; % clear the clamp
+        % homeostatic clamp the polariser at each end,
+        % diffusion between the two maintains the initial gradient
+        m.morphogenclamp( (id_plus_org_p > 0) | (id_neg_org_p > 0), polariser_i ) = 1;        
+        
+        m = leaf_setproperty( m, 'poissonsRatio', 0 );
+        THICKNESS = 0.1;    % Set the absolute thickness of the mesh. The
+                            % initial mesh is always 2 units in diameter.
+                            % Values of 0.05 to 0.25 are suitable.
+        % Process the THICKNESS setting.
+        m = leaf_setthicknessparams( m, 'scale', THICKNESS, 'power', 0 );
+        m = leaf_bowlz( m, -0.01 );
+
+        switch modelname
+            case {'CASE_O', 'CASE_P', 'CASE_Q'}
+                % setup extra organiser in the centre
+                % Gaussian shaped function in centre but force to zero
+                % beyond a radius set indirectly by MAXPOLRADIUS
+                P_level_at_MAXPOLRADIUS=exp(-MAXPOLRADIUS^2/(POLRADIUS^2));
+                extra = max( 0, exp(-f_radial_p/(POLRADIUS^2)) -P_level_at_MAXPOLRADIUS );
+                id_midorg_p = extra/max(extra); % normalised shape can be visualised
+                % to see this extra organiser on its own place a break point here Restart
+                % then evaluate the following (select the following, right click and evaluate)
+                % figure; plot3(m.nodes(:,1),m.nodes(:,2),id_midorg_p);shg
+                if strcmpi(modelname,'CASE_Q') % -organiser so subtract
+                    P = P - id_midorg_p; % initialise the extra spot
+                    % it will be maintained by mgen_production
+                    m.mgen_production( :, polariser_i ) = -1*id_midorg_p; % maintain reduced P in centre by decay
+                else
+                    P = P + id_midorg_p; % initialise the pattern - 
+                    % it will be maintained by mgen_production
+                    m.mgen_production( :, polariser_i ) = 1*id_midorg_p; % maintain extra P in centre
+                end
+                P = P - min(P); % ensure P is never negative
+        end
+        % Set up the ...
+        % @@GRN Gene Regulatory Network
+        switch modelname
+            % Pattern and fix gradients and gene patterns into tissue (canvas) before growth
+            case {'CASE_N', 'CASE_P','CASE_Q'}
+                % decreasing from centre by radius squared
+                id_g_p = max( 0, GROWTHRADIUS - f_radial_p ); 
+                id_g_p = BACKGROUNDGROWTH + EXTRAGROWTH * id_g_p/max(id_g_p); % normalised to 1 and *0.75 dt=0.1
+                id_g_l=id_g_p*id_g_a;
+            case {'CASE_O'}
+                id_g_p = BACKGROUNDGROWTH;
+                id_g_l=id_g_p*id_g_a;
+        end
+    end
+    
+    % Monitor growth by scattering discs that deform over time (c.f. inducing biological clones)
+    if (0.1>realtime-dt) && (0.1<realtime+dt) % discs to be added at realtime==5
+        m = leaf_makesecondlayer( m, ...  % This function adds discs that represent transformed cells.
+            'mode', 'each', ...  % Make discs randomly scattered over the canvas.
+            'relarea', 1/1600, ...
+            'numcells',100,...%number of discs (that will become ellipses)
+            'sides', 6, ...  % Each discs is approximated as a 6-sided regular polygon.
+            'probpervx', 1, ... % induce discs with this probability 
+            'colors', [0.5 0.5 0.5], ...  % Default colour is gray but
+            'colorvariation',0.1,... % Each disc is a random colour
+            'add', true );
+    end
+
+    % @@KRN Growth Regulatory Network
+    % The same for all these cases
+    kapar_p = id_g_l; 
+    kaper_p = 0;  % fully anisotropic growth
+    kbpar_p = kapar_p;  % the same on both sides of the canvas
+    kbper_p = kaper_p;  %
+    knor_p  = 0;  % no change in thickness

@@ -1,0 +1,79 @@
+
+% In this section you may modify the mesh in any way that does not
+% alter the set of nodes.
+
+    if (Steps(m)==0) && m.globalDynamicProps.doinit  % Initialisation code.
+        % Put any code here that should only be performed at the start of
+        % the simulation, for example, to set up initial morphogen values.
+        
+        % m.nodes is the set of vertex positions, an N by 3 array if there
+        % are N vertices.  Row number K contains the X, Y, and Z
+        % coordinates of the Kth vertex. To obtain a list of the X
+        % coordinates of every vertex, write m.nodes(:,1).  The Y
+        % coordinates are given by m.nodes(:,2) and the Z coordinates by
+        % m.nodes(:,3).
+        
+        id_plus_org_p(m.nodes(:,2)==min(m.nodes(:,2)))=1; % proximal (bottom)
+        id_neg_org_p (m.nodes(:,2)==max(m.nodes(:,2)))=1; % distal (top)
+
+%         % Setting up a gradient by clamping the ends (execute only once)
+%         % i.e. hypothesise a mechanism for homeostatic control of polariser
+%         % signalling factor
+%         P=id_plus_org_p; % setup POL (polariser)
+%         m.morphogenclamp( ((id_plus_org_p==1)|(id_neg_org_p==1)), polariser_i ) = 1; % clamp both ends
+%         m = leaf_mgen_conductivity( m, 'POLARISER', 0.01 );  %specifies the diffusion rate of polariser    
+%         m = leaf_mgen_absorption( m, 'POLARISER', 0.1 );     % specifies degradation rate of polariser
+
+        % Set up the growth factor
+        id_g_p=0.05 * ones(size(id_g_p)); % hypothesise a growth rate that is uniform over whole canvas
+    end
+    
+    % Monitor growth by scattering discs that deform over time (c.f. inducing biological clones)
+    if (5>realtime-dt) && (5<realtime+dt) % discs to be added at realtime==5
+        m = leaf_makesecondlayer( m, ...  % This function adds discs that represent transformed cells.
+            'mode', 'each', ...  % Make discs randomly scattered over the canvas.
+            'relarea', 1/1600, ...
+            'numcells',100,...%number of discs (that will become ellipses)
+            'sides', 6, ...  % Each discs is approximated as a 6-sided regular polygon.
+            'probpervx', 1, ... % induce discs with this probability 
+            'colors', [0.5 0.5 0.5], ...  % Default colour is gray but
+            'colorvariation',0.1,... % Each disc is a random colour
+            'add', true );
+    end
+
+%     % If you want to define different phases according to the absolute
+%     % time, create a morphogen for each phase and modulate 
+%     % expressions using the morphogen
+%     % like.  For example:
+    if (realtime < 10)  % initialisation
+        f_initialising = 1;
+    else
+        f_initialising = 0;
+    end
+    if (realtime >= 10) % growth 
+        f_growth = 1;
+    else
+        f_growth = 0;
+    end
+    
+    % POL (polariser) will be generated in the plus organiser region
+    % and destroyed in the negative organiser region
+    m.mgen_production(:,polariser_i) = 0.01*id_plus_org_p - 1*id_neg_org_p.*P;
+    m = leaf_mgen_conductivity( m, 'POLARISER', 0.001 );  %specifies the diffusion rate of polariser
+    m = leaf_mgen_absorption( m, 'POLARISER', 0.01 );     % specifies degradation rate of polariser
+
+    switch modelname
+        case 'CASE_A'  % @@model MODEL1
+            % @@PRN Polariser Regulatory Network
+                % see above
+            % @@GRN Gene Regulatory Network
+                % see above
+            % @@KRN Growth Regulatory Network
+                % Every equation to be formatted should end with an at-at Eqn N comment.
+            kapar_p = f_growth * id_g_l;  % growth only when realtime >= 10 hours
+            kaper_p = 0;  % fully anisotropic growth
+            kbpar_p = kapar_p;  % the same on both sides of the canvas
+            kbper_p = kaper_p;  %
+            knor_p  = 0;  % no change in thickness
+            
+    end

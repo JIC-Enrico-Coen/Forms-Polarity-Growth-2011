@@ -1,0 +1,55 @@
+
+% In this section you may modify the mesh in any way that does not
+% alter the set of nodes.
+    if Steps(m)==0  % Initialisation code.
+        % Put any code here that should only be performed at the start of
+        % the simulation, for example, to set up initial morphogen values.
+        m.morphogens=zeros(size(m.morphogens));
+        m.seams=logical(zeros(size(m.seams)));
+        m.polfreeze=zeros(size(m.polfreeze));
+        m.mgen_production=zeros(size(m.mgen_production));
+
+        xmax = max(m.nodes(:,1));
+        id_twist_p(xmax - m.nodes(:,1) < .3) = 1;
+        place_ventral = xmax - m.nodes(:,1) < .5;
+        id_ventral_p(place_ventral) = 1;
+        % set up a static polarity field along z
+        P = m.nodes(:,3);
+        dz=0.02;
+        
+        % This section creates a display feature (not a part of the model)
+        % seams usually designate lines along which canvas will be cut
+        % however, here they are used to display a grid
+        f_seams_p(:)=0;
+        f_seam2_p(:)=0;
+        for z=-1.8:0.2:1.8
+            inds=find(m.nodes(:,3)>(z-dz)& m.nodes(:,3)<(z+dz));
+            f_seams_p(inds)=1;
+        end
+        m=leaf_addseam(m,'nodes',find(f_seams_p>0.5));
+        indmid=(m.nodes(:,3) >= -1.001) & (m.nodes(:,3) <= 1.001);
+        theta_p = atan2( m.nodes(:,2), m.nodes(:,1) )*(0.5/pi);
+        [cnum,cmin,cstep,csz,clumpindex] = clumplinear( theta_p(indmid) );
+        deltad=0.002;
+        for i=1:4:cnum
+            ind=find(clumpindex==i);
+          % d=(theta_p-(cmin+(i-1)*cstep)).^2;
+          % ii=intersect(ind,find(d<deltad));
+          % f_seam2_p(ii)=1;
+            f_seam2_p(ind)=1;
+        end
+        m=leaf_addseam(m,'nodes',find(f_seam2_p>0.5));
+    end
+    m=leaf_plotoptions(m,'seamlinesize',0.1,'seamlinecolor','k');
+    m=leaf_plotoptions(m,'morphogenA','kaper','morphogenB','kbper');
+    
+    kapar_p(:) =0;
+    kbpar_p(:) =0;
+    kbper_p(:) = 0.1; % set kbper everywhere except ...
+    kbper_p(id_twist_p == 1) = -0.5; % (i.e. where twist is 1 set kbper to shrink)
+    kaper_p = 0.2*id_twist_p;
+    knor_p = -0.05*id_ventral_p;
+    
+    if realtime >= 5.0
+        kbper_p((id_ventral_p - id_twist_p) == 1) = 0.5;
+    end

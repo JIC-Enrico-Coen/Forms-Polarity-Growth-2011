@@ -1,0 +1,115 @@
+
+% In this section you may modify the mesh in any way that does not
+% alter the set of nodes.
+
+    if (Steps(m)==0) && m.globalDynamicProps.doinit  % Initialisation code.
+        % Put any code here that should only be performed at the start of
+        % the simulation, for example, to set up initial morphogen values.
+        
+        % m.nodes is the set of vertex positions, an N by 3 array if there
+        % are N vertices.  Row number K contains the X, Y, and Z
+        % coordinates of the Kth vertex. To obtain a list of the X
+        % coordinates of every vertex, write m.nodes(:,1).  The Y
+        % coordinates are given by m.nodes(:,2) and the Z coordinates by
+        % m.nodes(:,3).
+        
+        id_plus_org_p(abs(m.nodes(:,2))<0.005)=1; % proximal (bottom)
+        
+        % get ready the right hand side negative organiser
+        f_right_p=zeros(size(id_neg_org_p)); % temporary
+        miny=min(m.nodes(:,2));
+        maxy=max(m.nodes(:,2));
+        f_right_p (m.nodes(:,1)==max(m.nodes(:,1)))=1; % distal (top)
+        ind_right=find(f_right_p); % find all the negative organiser nodes
+        f_right_p(ind_right)=(2*abs(m.nodes(ind_right,2)))/(maxy-miny); % grade them from midline
+
+        % now the top and bottom negative organiser
+        minx=min(m.nodes(:,1));
+        maxx=max(m.nodes(:,1));
+        id_neg_org_p (m.nodes(:,2)==max(m.nodes(:,2)))=1; % distal (top)
+        id_neg_org_p (m.nodes(:,2)==min(m.nodes(:,2)))=1; % distal (top)
+        ind=find(id_neg_org_p); % find all the negative organiser nodes
+        id_neg_org_p(ind)=(m.nodes(ind,1)-minx)/(maxx-minx); % grade them from left to right
+        % and copy in the right hand side values
+        id_neg_org_p(ind_right)=f_right_p(ind_right);
+        %id_neg_org_p=id_neg_org_p.^2; % make gradients steeper
+    end
+    
+    % Monitor growth by scattering discs that deform over time (c.f. inducing biological clones)
+    if (5>realtime-dt) && (5<realtime+dt) % discs to be added at realtime==5
+        m = leaf_makesecondlayer( m, ...  % This function adds discs that represent transformed cells.
+            'mode', 'each', ...  % Make discs randomly scattered over the canvas.
+            'relarea', 1/1600, ...
+            'numcells',100,...%number of discs (that will become ellipses)
+            'sides', 6, ...  % Each discs is approximated as a 6-sided regular polygon.
+            'probpervx', 1, ... % induce discs with this probability 
+            'colors', [0.5 0.5 0.5], ...  % Default colour is gray but
+            'colorvariation',0.1,... % Each disc is a random colour
+            'add', true );
+    end
+
+%     % If you want to define different phases according to the absolute
+%     % time, create a morphogen for each phase and modulate 
+%     % expressions using the morphogen
+%     % like.  For example:
+    if (realtime < 10)  % initialisation
+        f_initialising = 1;
+    else
+        f_initialising = 0;
+    end
+    if (realtime >= 10) % growth 
+        f_growth = 1;
+    else
+        f_growth = 0;
+    end
+
+    switch modelname
+        case 'CASE_F'  
+            % @@PRN Polariser Regulatory Network
+            % POL (polariser) will be generated in the plus organiser region
+            % and destroyed in the negative organiser region
+            m.mgen_production(:,polariser_i) = 0.01*id_plus_org_p - 5*id_neg_org_p.*P;
+            % freeze polariser pattern as soon as growth starts
+            m = leaf_mgen_conductivity( m, 'POLARISER', 0.001 * f_initialising);  % diffusion rate stops when growing
+            m = leaf_mgen_absorption( m, 'POLARISER', 0.00  );  % degradation rate of stops when growing
+            % @@GRN Gene Regulatory Network
+            id_g_p=0.05 * ones(size(id_g_p)); % hypothesise a growth rate that is uniform over whole canvas
+        case 'CASE_G'  
+            % @@PRN Polariser Regulatory Network
+            % POL (polariser) will be generated in the plus organiser region
+            % and destroyed in the negative organiser region
+            m.mgen_production(:,polariser_i) = 0.01*id_plus_org_p - 5*id_neg_org_p.*P;
+            m = leaf_mgen_conductivity( m, 'POLARISER', 0.001 );  %specifies the diffusion rate of polariser
+            m = leaf_mgen_absorption( m, 'POLARISER', 0.00  );  % degradation rate of stops when growing
+            % @@GRN Gene Regulatory Network
+            id_g_p=0.05 * ones(size(id_g_p)); % hypothesise a growth rate that is uniform over whole canvas
+        case 'CASE_H'  
+            % @@PRN Polariser Regulatory Network
+            % POL (polariser) will be generated in the plus organiser region
+            % and destroyed in the negative organiser region
+            m.mgen_production(:,polariser_i) = 0.01*id_plus_org_p - 5*id_neg_org_p.*P;
+            % freeze polariser pattern as soon as growth starts
+            m = leaf_mgen_conductivity( m, 'POLARISER', 0.001 * f_initialising);  % diffusion rate stops when growing
+            m = leaf_mgen_absorption( m, 'POLARISER', 0.00  );  % degradation rate of stops when growing
+            % @@GRN Gene Regulatory Network
+            gradient=(m.nodes(:,1)-min(m.nodes(:,1)))/(max(m.nodes(:,1))-min(m.nodes(:,1))); % normalised to [0...1]
+            id_g_p=0.05 * gradient;
+        case 'CASE_I'  
+            % @@PRN Polariser Regulatory Network
+            % POL (polariser) will be generated in the plus organiser region
+            % and destroyed in the negative organiser region
+            m.mgen_production(:,polariser_i) = 0.01*id_plus_org_p - 5*id_neg_org_p.*P;
+            m = leaf_mgen_conductivity( m, 'POLARISER', 0.001 );  %specifies the diffusion rate of polariser
+            m = leaf_mgen_absorption( m, 'POLARISER', 0.00  );  % degradation rate of stops when growing
+            % @@GRN Gene Regulatory Network
+            gradient=(m.nodes(:,1)-min(m.nodes(:,1)))/(max(m.nodes(:,1))-min(m.nodes(:,1))); % normalised to [0...1]
+            id_g_p=0.05 * gradient;
+    end
+    
+    % @@KRN Growth Regulatory Network
+    % The same for all these cases
+    kapar_p = f_growth * id_g_l;  % growth only when realtime >= 10 hours
+    kaper_p = 0;  % fully anisotropic growth
+    kbpar_p = kapar_p;  % the same on both sides of the canvas
+    kbper_p = kaper_p;  %
+    knor_p  = 0;  % no change in thickness

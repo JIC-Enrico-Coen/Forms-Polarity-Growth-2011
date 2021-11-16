@@ -1,0 +1,32 @@
+
+% In this section you may modify the mesh in any way whatsoever.
+    if (Steps(m)==0) && m.globalDynamicProps.doinit % First iteration
+        % Zero out a lot of stuff to create a blank slate.  If you want to use the
+        % GUI to set any of these things in the initial mesh, then you will need to
+        % comment out the corresponding lines here.
+        m.morphogens(:) = 0;
+        m.morphogenclamp(:) = 0;
+        m.mgen_production(:) = 0;
+        m.mgen_absorption(:) = 0;
+        m.seams(:) = false;
+        m.mgen_dilution(:) = false;
+
+        % Set up names for variant models.  Useful for running multiple models on a cluster.
+        m.userdata.ranges.modelname.range = { 'CASE_A' };  % CLUSTER
+        m.userdata.ranges.modelname.index = 1;                       % CLUSTER
+    end
+    modelname = m.userdata.ranges.modelname.range{m.userdata.ranges.modelname.index};  % CLUSTER
+    disp(sprintf('\nRunning %s model %s\n',mfilename, modelname));
+    	
+    % More examples of code for all iterations.
+
+    % To set the following from the GUI comment out the following
+    % Set priorities for simultaneous plotting of multiple morphogens, if desired.
+    m = leaf_mgen_plotpriority( m, {'id_plus_org', 'id_neg_org'}, [1,2], [0.5,0.75] );
+
+    % setup a multiplot of the following morphogens
+    %m = leaf_plotoptions( m, 'morphogen', {'id_g','id_plus_org', 'id_neg_org'});
+    
+    % setup stepsize here (but like other parameters, could be setup in the
+    % GUI
+    m.globalProps.timestep=1;

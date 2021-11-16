@@ -1,0 +1,190 @@
+
+    ZEROGROWTHTIME=20;
+    FIRSTGROWTHTIME=140;
+    SECONDGROWTHTIME=200;
+    disp(sprintf('modelname=%s setup period=%d early growth=%d late growth=%d',...
+        modelname,ZEROGROWTHTIME,FIRSTGROWTHTIME,SECONDGROWTHTIME))
+    % In this section you may modify the mesh in any way that does not
+    % alter the set of nodes.
+    if Steps(m)==0  % zeroing code.
+        %elseif Steps(m)==1  % Initialisation code.
+        % setup proximo-distal regions
+        ind_base=m.nodes(:,3)<=-0.15;
+        id_base_p(ind_base)=1;
+        width_polariser_band=0.03;
+        prox_ind=find((m.nodes(:,3)<=-0.15+width_polariser_band)&(m.nodes(:,3)>-0.15));
+        all_ind=find(m.nodes(:,3)>-1000);
+        id_prox_p(prox_ind)=1;
+        id_prox_l=id_prox_p.*id_prox_a;
+        v_clones_p(:)=1; % everywhere except the base
+        v_clones_p(id_prox_p>0.5)=0;
+        % the following just identifies nodes the top
+        epsilon=0.0025; %0.006;
+        maxz=max(m.nodes(:,3)); % z coords
+        id_dist_p(m.nodes(:,3)>=maxz)=1;
+        %id_dist_p(m.nodes(:,3)>=maxz-width_polariser_band)=1;
+        id_dist_l=id_dist_p.*id_dist_a;
+        %fix z for the base to prevent base from moving up or down
+        m=leaf_fix_vertex(m,'vertex',prox_ind,'dfs','z');
+
+        minz= -0.13;
+        % define ventral region (for experiments with strain retention)
+        % need 4 separators for 5 intervals
+        number_bands=7;
+        stepz=(maxz-minz)/number_bands;
+        for i=1:number_bands-1
+            sep(i)=minz+stepz*i;
+        end
+        
+        id_rightl_p(m.nodes(:,1)>=max(m.nodes(:,1))-0.002)=1;
+        id_rightl_l=id_rightl_p.*id_rightl_a;
+        id_leftl_p(m.nodes(:,1)<=(min(m.nodes(:,1))+0.002))=1;
+        id_leftl_l=id_leftl_p.*id_leftl_a;
+        id_lower_p(m.nodes(:,3)<sep(2))=1;
+        id_lower_l=id_lower_p.*id_lower_a;
+
+        % identify factors up the lat
+        id_lat_p((m.nodes(:,1)>-0.0-6*epsilon)&(m.nodes(:,1)<0.0+6*epsilon))=1;
+        id_lat_l=id_lat_p.*id_lat_a;
+    end
+
+    if realtime<ZEROGROWTHTIME                      % @@before 20
+        id_startup_p(:)=1;
+        id_early_p(:)=1;
+        id_late_p(:)=0;
+        arrest_p(:)=1;
+    elseif realtime>=ZEROGROWTHTIME && realtime<FIRSTGROWTHTIME % @@between 20 120
+        id_startup_p(:)=0;
+        id_early_p(:)=1;
+        id_late_p(:)=0;
+        arrest_p(:)=0;
+    elseif realtime>=FIRSTGROWTHTIME && realtime<SECONDGROWTHTIME% @@between 120 250
+        id_startup_p(:)=0;
+        id_early_p(:)=0;
+        id_late_p(:)=1;
+        arrest_p(:)=0;
+    else                                % @@after 250
+        id_startup_p(:)=0;
+        id_early_p(:)=0;
+        id_late_p(:)=0;
+        arrest_p(:)=1;
+    end        
+        
+    % set the timing on each iteration to make it easier to modify on the fly
+
+    if realtime>(ZEROGROWTHTIME-dt) && realtime<=ZEROGROWTHTIME
+        % add discs that will monitor growth by distorting and growing into ellipses
+        m = leaf_makesecondlayer( m, ...  % This function adds equivalent of biological cells.
+            'mode', 'each', ...  % Make biological cells randomly scattered over the flower.
+            'relinitarea', 1/2000, ...  % Each cell has area was 1/8000 of the initial area of the flower.
+            'probpervx', 'V_CLONES', ...% cells will be deposited within this region
+            'numcells',200,... % number of cells
+            'colorvariation',0,... % do not distinguish one from another
+            'lat', 6, ...  % Each cell is approximated as a 6-sided regular polygon.
+            'colors', [0 1 0], ...  % Each cell is green.
+            'add', true );  % These cells are added to any cells existing already.
+    end
+    % Code common to all models.
+
+    m = leaf_mgen_conductivity( m, 's_lat',     0.005); % diffusion constant
+    m = leaf_mgen_dilution( m,     's_lat',     false );% it will not dilute with growth
+    m = leaf_mgen_absorption( m,   's_lat',     0.1);     % it will decay everywhere
+
+    id_proxorg_p=id_prox_l;
+    id_distorg_p=id_dist_l;
+
+    BASIC_GROWTH=0.018;
+    % Code for incremental models.
+    switch modelname
+        case 'NOPOL'  % @@model MODEL1
+            % @@PRN Polariser Regulatory Network
+            m.mgen_production(:,polariser_i)  = 0; % no polariser % @@ Eqn 1
+            P(:)=0;
+            % @@GRN Gene Regulatory Network
+            m.mgen_production(:,s_lat_i)  = 0.8*id_lat_l.*inh(100,id_prox_l); % diffuse out from lat % @@ Eqn 2
+            id_upper_p=1*inh(100,id_lower_l);
+            id_g_p=BASIC_GROWTH * id_upper_l .* inh(7,s_lat_l.*s_lat_l).*inh(1000,arrest_p);
+            id_g_l=id_g_p.*id_g_a;
+            % @@KRN Growth Regulatory Network
+            kapar_p= 0.5*id_g_l;% @@ Eqn 3
+            kbpar_p= kapar_p;      % @@ Eqn 4
+            kaper_p = kapar_p;% @@ Eqn 5
+            kbper_p = kaper_p;    % @@ Eqn 6
+            knor_p  =0.003;       % @@ Eqn 7
+            
+            m=leaf_plotoptions(m,'morphogen',{'id_g','id_lower'});
+
+          case 'POL3'  % @@model MODEL2
+            % @@PRN Polariser Regulatory Network
+            m = leaf_mgen_conductivity( m, 'Polariser', 0.05);   % diffusion constant
+            m = leaf_mgen_dilution( m,     'Polariser', false );  % it will not dilute with growth
+            m = leaf_mgen_absorption( m,   'Polariser', 0);       % it will not decay everywhere
+            m.globalProps.mingradient=0;
+
+            id_proxorg_p=id_prox_l;% @@ Eqn 8
+            id_proxorg_l=id_proxorg_p.*id_proxorg_a;
+            id_distorg_p=id_dist_l; % @@ Eqn 9
+            id_distorg_l=id_distorg_p.*id_distorg_a;
+            ind_distorg=find(id_distorg_l>0.0);
+            ind_proxorg=find(id_proxorg_l>0.0);
+            P(ind_distorg)=0; %id_distorg_l(ind_distorg);
+            P(ind_proxorg)=1; %id_proxorg_l(ind_proxorg);
+            m.morphogenclamp(:,polariser_i) = 0;
+            m.morphogenclamp(ind_distorg,polariser_i) = 1;
+            m.morphogenclamp(ind_proxorg,polariser_i) = 1;
+
+            % @@GRN Gene Regulatory Network
+            m.mgen_production(:,s_lat_i)  = 0.8*id_lat_l.*inh(100,id_prox_l); % diffuse out from lat % @@ Eqn 2
+            id_upper_p=1*inh(100,id_lower_l);
+            id_g_p=BASIC_GROWTH * id_upper_l .* inh(7,s_lat_l.*s_lat_l).*inh(1000,arrest_p);
+            id_g_l=id_g_p.*id_g_a;
+            % @@KRN Growth Regulatory Network
+            kapar_p = 0.75 * id_g_l;% @@ Eqn 3
+            kbpar_p = kapar_p;      % @@ Eqn 4
+            kaper_p = 0.25 * id_g_l;% @@ Eqn 5
+            kbper_p = kaper_p;    % @@ Eqn 6
+            knor_p  = 0.003;       % @@ Eqn 7      
+        
+            m=leaf_plotoptions(m,'morphogen',{'id_g','id_proxorg','id_distorg','id_lower'});
+        case 'POLCEN2'  % @@model MODEL2
+            % @@PRN Polariser Regulatory Network
+            m = leaf_mgen_conductivity( m, 'Polariser', 0.05);   % diffusion constant
+            m = leaf_mgen_dilution( m,     'Polariser', false );  % it will not dilute with growth
+            m = leaf_mgen_absorption( m,   'Polariser', 0);       % it will not decay everywhere
+            m.globalProps.mingradient=0;
+
+            id_proxorg_p=id_prox_l;% @@ Eqn 8
+            id_proxorg_l=id_proxorg_p.*id_proxorg_a;
+            id_distorg_p=id_early_l.*id_dist_l ...% @@ Eqn 9
+                + id_late_l.*id_dist_l.*(id_leftl_l+id_rightl_l);% @@ Eqn 10
+            id_distorg_l=id_distorg_p.*id_distorg_a;
+            ind_distorg=find(id_distorg_l>0.0);
+            ind_proxorg=find(id_proxorg_l>0.0);
+            P(ind_distorg)=0; %id_distorg_l(ind_distorg);
+            P(ind_proxorg)=1; %id_proxorg_l(ind_proxorg);
+            m.morphogenclamp(:,polariser_i) = 0;
+            m.morphogenclamp(ind_distorg,polariser_i) = 1;
+            m.morphogenclamp(ind_proxorg,polariser_i) = 1;
+
+            % @@GRN Gene Regulatory Network
+            m.mgen_production(:,s_lat_i)  = 0.8*id_lat_l.*inh(100,id_prox_l); % diffuse out from lat % @@ Eqn 2
+            id_upper_p=1*inh(100,id_lower_l);
+            id_g_p=BASIC_GROWTH * id_upper_l .* inh(7,s_lat_l.*s_lat_l).*inh(1000,arrest_p);
+            id_g_l=id_g_p.*id_g_a;
+            % @@KRN Growth Regulatory Network
+            kapar_p = 0.75 * id_g_l;% @@ Eqn 3
+            kbpar_p = kapar_p;      % @@ Eqn 4
+            kaper_p = 0.25 * id_g_l;% @@ Eqn 5
+            kbper_p = kaper_p;    % @@ Eqn 6
+            knor_p  = 0.003;       % @@ Eqn 7
+            
+            m=leaf_plotoptions(m,'morphogen',{'id_g','id_proxorg','id_distorg','id_lower'});
+          otherwise
+            kapar_p=0;    % @@ Eqn 3
+            kbpar_p=0;    % @@ Eqn 4
+            kaper_p=0;    % @@ Eqn 5
+            kbper_p=0;    % @@ Eqn 6
+            knor_p =0;    % @@ Eqn 7
+    end
+    v_kpar_p=(kapar_p+kbpar_p)/2;
+    v_kper_p=(kaper_p+kbper_p)/2;

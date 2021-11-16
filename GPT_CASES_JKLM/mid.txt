@@ -1,0 +1,154 @@
+
+% In this section you may modify the mesh in any way that does not
+% alter the set of nodes.
+
+    if (Steps(m)==0) && m.globalDynamicProps.doinit  % Initialisation code.
+        % Put any code here that should only be performed at the start of
+        % the simulation, for example, to set up initial morphogen values.
+        
+        f_radial_p=sqrt(m.nodes(:,1).^2+m.nodes(:,2).^2); % morphogen is visible in GUI
+        ind_small_disc=find(f_radial_p<0.005);
+        id_midorg_p(ind_small_disc)=1;
+        % suffix _p means promoter level - how much the expression of the factor
+        % is being promoted in the model.
+        % suffix _a the activity (default is 1, mutants might be 0)
+        % suffix _l the net level of activity: promoter times activity
+        id_midorg_l=id_midorg_p*id_midorg_a; % _l suffix 
+        
+        ind_large_circle=find(f_radial_p>=0.055);
+        id_outer_p(ind_large_circle)=1;
+        id_outer_l=id_outer_p*id_outer_a;
+        
+        ind_midlarge_circle=find(f_radial_p<=0.015);
+        id_midlarger_p(ind_midlarge_circle)=1;
+        id_midlarger_l=id_midlarger_p*id_midlarger_a;
+        
+        % Fixing vertices, i.e. fix z for the base to prevent base from moving up or down
+        % Similar to the canvas (tissue) being part of a larger continuum
+        f_border_p=zeros(size(id_midlarger_p)); 
+        f_border_p((abs(m.nodes(:,1))>0.09) | ...
+            (abs(m.nodes(:,2))>0.09))=1;
+        m=leaf_fix_vertex(m,'vertex',find(f_border_p==1),'dfs','z');
+        
+        f_radial_p=((max(f_radial_p)-f_radial_p))/max(f_radial_p); % normalise
+        f_radial_p=f_radial_p.^2; % steepen gradient
+        f_radial_l=f_radial_p*f_radial_a;
+    end
+    
+    % Monitor growth by scattering discs that deform over time (c.f. inducing biological clones)
+    if (5>realtime-dt) && (5<realtime+dt) % discs to be added at realtime==5
+        m = leaf_makesecondlayer( m, ...  % This function adds discs that represent transformed cells.
+            'mode', 'each', ...  % Make discs randomly scattered over the canvas.
+            'relarea', 1/1600, ...
+            'numcells',100,...%number of discs (that will become ellipses)
+            'sides', 6, ...  % Each discs is approximated as a 6-sided regular polygon.
+            'probpervx', 1, ... % induce discs with this probability 
+            'colors', [0.5 0.5 0.5], ...  % Default colour is gray but
+            'colorvariation',0.1,... % Each disc is a random colour
+            'add', true );
+    end
+
+%     
+%                     % Anisotropic growth, uniform amount.  Radial polaroiser
+%                 % gradient set up by fiat.
+%                 kapar_p(:) = 1;
+%                 P = sum( m.nodes.^2, 2 );
+
+%     % If you want to define different phases according to the absolute
+%     % time, create a morphogen for each phase and modulate 
+%     % expressions using the morphogen
+%     % like.  For example:
+    if (realtime < 10)  % initialisation
+        f_initialising = 1;
+    else
+        f_initialising = 0;
+    end
+    if (realtime >= 10) % growth 
+        f_growth = 1;
+    else
+        f_growth = 0;
+    end
+
+    switch modelname
+        case 'CASE_J'  
+            % @@PRN Polariser Regulatory Network
+            % set POL (polariser) to 1 in the centre and 0 in the outer region
+            % (the clamp equivalent to homeostatic control) POL can diffuse
+            % between the two
+            if (Steps(m)==0)
+                P=zeros(size(P));
+                P(id_midorg_p==1)=1;
+                m.morphogenclamp((id_midorg_l==1)|(id_outer_l==1),polariser_i) = 1; % double(sourcenodes);
+            end
+            m = leaf_mgen_conductivity( m, 'POLARISER', 0.001 );  % diffusion rate 
+            m = leaf_mgen_absorption( m, 'POLARISER', 0.0  );  % degradation rate 
+            m=leaf_setproperty(m,'mingradient',0.1); % i.e. threshold for using polariser gradient 
+            % where polarity gradient is zero growth will be isotropic and
+            % equal to the mean of kpar and kper
+            % @@GRN Gene Regulatory Network
+            id_g_p=0.05 * ...
+                ones(size(id_g_p)); % uniform background average growth rate 
+            
+            % setup a multiplot of the following morphogens (changes with CASE)
+            m = leaf_plotoptions( m, 'morphogen', {'id_g','id_midorg','f_border'});
+        case 'CASE_K'  
+            % @@PRN Polariser Regulatory Network
+            % None
+            % @@GRN Gene Regulatory Network
+            id_g_p=0.05 * ...
+                (1 ... % background growth
+                + pro(1,f_radial_l).*inh(100,id_outer_l)); % promote radially decaying growth in centre and
+                %  and inhibit in the outer region
+
+            % setup a multiplot of the following morphogens (changes with CASE)
+            m = leaf_plotoptions( m, 'morphogen', {'id_g','f_border'});
+        case 'CASE_L'  
+            % @@PRN Polariser Regulatory Network
+            % set POL (polariser) to 1 in the centre and 0 in the outer region
+            % (the clamp equivalent to homeostatic control) POL can diffuse
+            % between the two
+            if (Steps(m)==0)
+                P=zeros(size(P));
+                P(id_midorg_p==1)=1;
+                m.morphogenclamp((id_midorg_l==1)|(id_outer_l==1),polariser_i) = 1; % double(sourcenodes);
+            end
+            m = leaf_mgen_conductivity( m, 'POLARISER', 0.001 );  % diffusion rate 
+            m = leaf_mgen_absorption( m, 'POLARISER', 0.0  );  % degradation rate 
+            m=leaf_setproperty(m,'mingradient',0.1); % i.e. threshold for using polariser gradient 
+            % @@GRN Gene Regulatory Network
+            id_g_p=0.05 * ...
+                (1 ... % background growth
+                + pro(1,f_radial_l).*inh(100,id_outer_l)); % radially decaying growth in centre 
+
+            % setup a multiplot of the following morphogens (changes with CASE)
+            m = leaf_plotoptions( m, 'morphogen', {'id_g','id_midorg','f_border'});
+        case 'CASE_M'  
+            % @@PRN Polariser Regulatory Network
+            % set POL (polariser) to 1 in the centre and 0 in the outer region
+            % (the clamp equivalent to homeostatic control) POL can diffuse
+            % between the two
+            if (Steps(m)==0)
+                P=zeros(size(P));
+                P(id_midorg_p==1)=1;
+                m.morphogenclamp((id_midorg_l==1)|(id_outer_l==1),polariser_i) = 1; % double(sourcenodes);
+            end
+            m = leaf_mgen_conductivity( m, 'POLARISER', 0.001 );  % diffusion rate 
+            m = leaf_mgen_absorption( m, 'POLARISER', 0.0  );  % degradation rate 
+            m=leaf_setproperty(m,'mingradient',0.1); % i.e. threshold for using polariser gradient 
+            % @@GRN Gene Regulatory Network
+            id_g_p=0.05 * ...
+                (1 ... % background growth
+                + pro(1,f_radial_l).*inh(100,id_outer_l))...; % radially decaying growth in centre only
+                .* inh(1000,id_midlarger_l); % inhibit grow in the centre
+
+            % setup a multiplot of the following morphogens (changes with CASE)
+            m = leaf_plotoptions( m, 'morphogen', {'id_g','id_midorg','f_border'});
+    end
+    
+    % @@KRN Growth Regulatory Network
+    % The same for all these cases
+    kapar_p = f_growth * id_g_l;  % growth only when realtime >= 10 hours
+    kaper_p = 0;  % fully anisotropic growth
+    kbpar_p = kapar_p;  % the same on both sides of the canvas
+    kbper_p = kaper_p;  %
+    knor_p  = 0;  % no change in thickness
